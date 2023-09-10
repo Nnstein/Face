@@ -6,7 +6,6 @@ pandas==1.3.5
 scikit_learn==1.0.2
 #<<<<<<< HEAD
 gunicorn
-flask-socketio
 #=======
 #gunicorn==19.7.1
 #>>>>>>> 6f026e8e45e2984a40efd4f9dcd41b31b9620ab6
