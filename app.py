@@ -1,6 +1,8 @@
 import cv2
 import os
 from flask import Flask,request,render_template
+from flask_socketio import SocketIO, emit
+
 from datetime import date
 from datetime import datetime
 import numpy as np
@@ -10,6 +12,8 @@ import joblib
 
 #### Defining Flask App
 app = Flask(__name__)
+socketio = SocketIO(app)
+
 
 
 #### Saving Date today in 2 different formats
@@ -122,7 +126,7 @@ def deletefolder(duser):
 @app.route('/')
 def home():
     names,rolls,times,l = extract_attendance()    
-    return render_template('home.html',names=names,rolls=rolls,times=times,l=l,totalreg=totalreg(),datetoday2=datetoday2)  
+    return render_template('home_socketio.html',names=names,rolls=rolls,times=times,l=l,totalreg=totalreg(),datetoday2=datetoday2)  
 
 
 #### This function will run when we click on Take Attendance Button
@@ -131,24 +135,37 @@ def start():
     if 'face_recognition_model.pkl' not in os.listdir('static'):
         return render_template('home.html',totalreg=totalreg(),datetoday2=datetoday2,mess='There is no trained model in the static folder. Please add a new face to continue.') 
 
-    ret = True
-    cap = cv2.VideoCapture(0)
-    while ret:
-        ret,frame = cap.read()
-        if len(extract_faces(frame))>0:
-            (x,y,w,h) = extract_faces(frame)[0]
-            cv2.rectangle(frame,(x, y), (x+w, y+h), (255, 0, 20), 2)
-            face = cv2.resize(frame[y:y+h,x:x+w], (50, 50))
-            identified_person = identify_face(face.reshape(1,-1))[0]
-            add_attendance(identified_person)
-            cv2.putText(frame,f'{identified_person}',(30,30),cv2.FONT_HERSHEY_SIMPLEX,1,(255, 0, 20),2,cv2.LINE_AA)
-        cv2.imshow('Attendance',frame)
-        if cv2.waitKey(1)==27:
-            break
-    cap.release()
-    cv2.destroyAllWindows()
-    names,rolls,times,l = extract_attendance()    
-    return render_template('home.html',names=names,rolls=rolls,times=times,l=l,totalreg=totalreg(),datetoday2=datetoday2) 
+
+    def generate_frames():
+        ret = True
+        cap = cv2.VideoCapture(0)
+        while ret:
+            ret,frame = cap.read()
+            if len(extract_faces(frame))>0:
+                (x,y,w,h) = extract_faces(frame)[0]
+                cv2.rectangle(frame,(x, y), (x+w, y+h), (255, 0, 20), 2)
+                face = cv2.resize(frame[y:y+h,x:x+w], (50, 50))
+                identified_person = identify_face(face.reshape(1,-1))[0]
+                add_attendance(identified_person)
+                cv2.putText(frame,f'{identified_person}',(30,30),cv2.FONT_HERSHEY_SIMPLEX,1,(255, 0, 20),2,cv2.LINE_AA)
+                # cv2.imshow('Attendance',frame)
+
+            #Encode the frame in JPEG format
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+
+            #emit the frame to a ll connected clients
+            socketio.emit('frame', {'image': frame_bytes}, namespace='/camera')
+
+        cap.release()
+
+        # if cv2.waitKey(1)==27:
+            # break
+    # cap.release()
+    # cv2.destroyAllWindows()
+    # names,rolls,times,l = extract_attendance()    
+    # return render_template('home.html',names=names,rolls=rolls,times=times,l=l,totalreg=totalreg(),datetoday2=datetoday2) 
+    return render_template(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 #### This function will run when we add a new user
